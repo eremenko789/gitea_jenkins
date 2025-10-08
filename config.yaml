@@ -1,0 +1,41 @@
+server:
+  port: "8080"
+
+jenkins:
+  url: "http://jenkins:8080"
+  username: "admin"
+  token: "your-jenkins-token"
+
+gitea:
+  url: "http://gitea:3000"
+  token: "your-gitea-token"
+
+timeout: "10m"
+
+jobs:
+  - name: "build-frontend"
+    repository: "myorg/myproject"
+    branch: "main"
+    jenkins_job: "myproject-frontend-build"
+    parameters:
+      BRANCH_NAME: "main"
+      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
+    description: "Frontend build job"
+  
+  - name: "build-backend"
+    repository: "myorg/myproject"
+    branch: "main"
+    jenkins_job: "myproject-backend-build"
+    parameters:
+      BRANCH_NAME: "main"
+      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
+    description: "Backend build job"
+  
+  - name: "run-tests"
+    repository: "myorg/myproject"
+    branch: "main"
+    jenkins_job: "myproject-tests"
+    parameters:
+      BRANCH_NAME: "main"
+      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
+    description: "Test execution job"
