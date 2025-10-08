@@ -1,0 +1,37 @@
+server:
+  port: "8080"
+
+jenkins:
+  url: "https://jenkins.yourcompany.com"
+  username: "jenkins-user"
+  token: "${JENKINS_TOKEN}"
+
+gitea:
+  url: "https://git.yourcompany.com"
+  token: "${GITEA_TOKEN}"
+
+organizations:
+  - name: "redkitlab"
+    repositories:
+      - "scada"
+      - "monitoring"
+      - "iot-gateway"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "RedKitLab organization jobs"
+  
+  - name: "devops"
+    repositories:
+      - "infrastructure"
+      - "deployment"
+      - "monitoring"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "DevOps organization jobs"
+  
+  - name: "qa"
+    repositories:
+      - "test-automation"
+      - "performance-tests"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "QA organization jobs"
+
+check_timeout: "30s"

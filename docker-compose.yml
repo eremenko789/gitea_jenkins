@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Наше приложение
+  webhook-server:
+    build: .
+    container_name: gitea-jenkins-webhook
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+    depends_on:
+      - jenkins
+      - gitea
+    networks:
+      - webhook-network
+    restart: unless-stopped
+
+  # Jenkins для тестирования
+  jenkins:
+    image: jenkins/jenkins:lts-jdk11
+    container_name: jenkins
+    ports:
+      - "8081:8080"
+    environment:
+      - JENKINS_OPTS=--httpPort=8080
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - webhook-network
+    restart: unless-stopped
+
+  # Gitea для тестирования
+  gitea:
+    image: gitea/gitea:latest
+    container_name: gitea
+    ports:
+      - "3000:3000"
+      - "222:22"
+    environment:
+      - USER_UID=1000
+      - USER_GID=1000
+      - GITEA__database__DB_TYPE=sqlite3
+      - GITEA__database__PATH=/data/gitea/gitea.db
+      - GITEA__server__DOMAIN=localhost
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__server__ROOT_URL=http://localhost:3000
+    volumes:
+      - gitea_data:/data
+    networks:
+      - webhook-network
+    restart: unless-stopped
+
+volumes:
+  jenkins_home:
+  gitea_data:
+
+networks:
+  webhook-network:
+    driver: bridge
