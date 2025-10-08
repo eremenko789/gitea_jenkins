@@ -10,32 +10,21 @@ gitea:
   url: "http://gitea:3000"
   token: "your-gitea-token"
 
-timeout: "10m"
+# Организации Jenkins, которые отслеживают репозитории
+organizations:
+  - name: "redkitlab"
+    repositories:
+      - "scada"
+      - "monitoring"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "RedKitLab organization jobs"
+  
+  - name: "devops"
+    repositories:
+      - "infrastructure"
+      - "deployment"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "DevOps organization jobs"
 
-jobs:
-  - name: "build-frontend"
-    repository: "myorg/myproject"
-    branch: "main"
-    jenkins_job: "myproject-frontend-build"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
-    description: "Frontend build job"
-  
-  - name: "build-backend"
-    repository: "myorg/myproject"
-    branch: "main"
-    jenkins_job: "myproject-backend-build"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
-    description: "Backend build job"
-  
-  - name: "run-tests"
-    repository: "myorg/myproject"
-    branch: "main"
-    jenkins_job: "myproject-tests"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
-    description: "Test execution job"
+# Таймаут для проверки существования джоб
+check_timeout: "30s"

@@ -10,44 +10,28 @@ gitea:
   url: "https://git.yourcompany.com"
   token: "${GITEA_TOKEN}"
 
-timeout: "15m"
+organizations:
+  - name: "redkitlab"
+    repositories:
+      - "scada"
+      - "monitoring"
+      - "iot-gateway"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "RedKitLab organization jobs"
+  
+  - name: "devops"
+    repositories:
+      - "infrastructure"
+      - "deployment"
+      - "monitoring"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "DevOps organization jobs"
+  
+  - name: "qa"
+    repositories:
+      - "test-automation"
+      - "performance-tests"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "QA organization jobs"
 
-jobs:
-  - name: "frontend-build"
-    repository: "company/frontend-app"
-    branch: "main"
-    jenkins_job: "frontend-app-build"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://git.yourcompany.com/company/frontend-app.git"
-      NODE_VERSION: "18"
-    description: "Frontend application build"
-  
-  - name: "backend-build"
-    repository: "company/backend-api"
-    branch: "main"
-    jenkins_job: "backend-api-build"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://git.yourcompany.com/company/backend-api.git"
-      GO_VERSION: "1.21"
-    description: "Backend API build"
-  
-  - name: "integration-tests"
-    repository: "company/integration-tests"
-    branch: "main"
-    jenkins_job: "integration-tests-run"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://git.yourcompany.com/company/integration-tests.git"
-      TEST_ENV: "staging"
-    description: "Integration tests execution"
-  
-  - name: "security-scan"
-    repository: "company/security-scanner"
-    branch: "*"
-    jenkins_job: "security-scan-all"
-    parameters:
-      REPOSITORY_URL: "https://git.yourcompany.com/company/security-scanner.git"
-      SCAN_TYPE: "full"
-    description: "Security vulnerability scan"
+check_timeout: "30s"

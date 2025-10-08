@@ -10,11 +10,11 @@ import (
 
 // Config представляет основную конфигурацию приложения
 type Config struct {
-	Server   ServerConfig   `yaml:"server"`
-	Jenkins  JenkinsConfig  `yaml:"jenkins"`
-	Gitea    GiteaConfig    `yaml:"gitea"`
-	Jobs     []JobConfig    `yaml:"jobs"`
-	Timeout  time.Duration  `yaml:"timeout"`
+	Server        ServerConfig        `yaml:"server"`
+	Jenkins       JenkinsConfig       `yaml:"jenkins"`
+	Gitea         GiteaConfig         `yaml:"gitea"`
+	Organizations []OrganizationConfig `yaml:"organizations"`
+	CheckTimeout  time.Duration       `yaml:"check_timeout"`
 }
 
 // ServerConfig конфигурация сервера
@@ -35,14 +35,12 @@ type GiteaConfig struct {
 	Token string `yaml:"token"`
 }
 
-// JobConfig конфигурация джобы
-type JobConfig struct {
-	Name        string            `yaml:"name"`
-	Repository  string            `yaml:"repository"`
-	Branch      string            `yaml:"branch"`
-	JenkinsJob  string            `yaml:"jenkins_job"`
-	Parameters  map[string]string `yaml:"parameters"`
-	Description string            `yaml:"description"`
+// OrganizationConfig конфигурация организации Jenkins
+type OrganizationConfig struct {
+	Name         string   `yaml:"name"`
+	Repositories []string `yaml:"repositories"`
+	JobPattern   string   `yaml:"job_pattern"`
+	Description  string   `yaml:"description"`
 }
 
 // LoadConfig загружает конфигурацию из YAML файла
@@ -58,8 +56,8 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	// Устанавливаем значения по умолчанию
-	if config.Timeout == 0 {
-		config.Timeout = 10 * time.Minute
+	if config.CheckTimeout == 0 {
+		config.CheckTimeout = 30 * time.Second
 	}
 
 	if config.Server.Port == "" {

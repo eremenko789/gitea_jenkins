@@ -11,6 +11,40 @@ cp config.yaml my-config.yaml
 # Отредактируйте my-config.yaml
 ```
 
+### Пример конфигурации
+
+```yaml
+server:
+  port: "8080"
+
+jenkins:
+  url: "http://jenkins:8080"
+  username: "admin"
+  token: "your-jenkins-token"
+
+gitea:
+  url: "http://gitea:3000"
+  token: "your-gitea-token"
+
+organizations:
+  - name: "redkitlab"
+    repositories:
+      - "scada"
+      - "monitoring"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "RedKitLab organization jobs"
+
+check_timeout: "30s"
+```
+
+### Как это работает
+
+1. При создании PR #453 в репозитории "scada"
+2. Приложение найдет организацию "redkitlab", которая отслеживает "scada"
+3. Сформирует имя джобы: `redkitlab/scada/PR-453`
+4. Проверит существование этой джобы в Jenkins
+5. Опубликует комментарий с результатом проверки
+
 ### 2. Запуск локально
 
 ```bash

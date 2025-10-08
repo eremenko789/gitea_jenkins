@@ -33,52 +33,57 @@ func (s *WebhookService) ProcessPullRequest(event models.PullRequestEvent) error
 
 	log.Printf("Processing PR #%d in repository %s", pr.Number, repo.FullName)
 
-	// Находим подходящие джобы для этого репозитория и ветки
-	matchingJobs := s.findMatchingJobs(repo.FullName, pr.Head.Ref)
-	if len(matchingJobs) == 0 {
-		log.Printf("No matching jobs found for repository %s and branch %s", repo.FullName, pr.Head.Ref)
+	// Находим подходящие организации для этого репозитория
+	matchingOrgs := s.findMatchingOrganizations(repo.Name)
+	if len(matchingOrgs) == 0 {
+		log.Printf("No matching organizations found for repository %s", repo.Name)
 		return nil
 	}
 
-	log.Printf("Found %d matching jobs", len(matchingJobs))
+	log.Printf("Found %d matching organizations", len(matchingOrgs))
 
-	// Запускаем джобы асинхронно
-	jobResults := make(chan JobResult, len(matchingJobs))
+	// Проверяем существование джоб асинхронно
+	jobResults := make(chan JobResult, len(matchingOrgs))
 	
-	for _, job := range matchingJobs {
-		go s.runJobAsync(job, pr, repo, jobResults)
+	for _, org := range matchingOrgs {
+		go s.checkJobAsync(org, pr, repo, jobResults)
 	}
 
 	// Собираем результаты
-	var successfulJobs []JobResult
-	var failedJobs []JobResult
-	timeout := time.After(s.config.Timeout)
+	var existingJobs []JobResult
+	var missingJobs []JobResult
+	timeout := time.After(s.config.CheckTimeout)
 
-	for i := 0; i < len(matchingJobs); i++ {
+	for i := 0; i < len(matchingOrgs); i++ {
 		select {
 		case result := <-jobResults:
 			if result.Error != nil {
-				failedJobs = append(failedJobs, result)
-				log.Printf("Job %s failed: %v", result.JobName, result.Error)
+				missingJobs = append(missingJobs, result)
+				log.Printf("Job %s check failed: %v", result.JobName, result.Error)
+			} else if result.Exists {
+				existingJobs = append(existingJobs, result)
+				log.Printf("Job %s exists", result.JobName)
 			} else {
-				successfulJobs = append(successfulJobs, result)
-				log.Printf("Job %s completed successfully", result.JobName)
+				missingJobs = append(missingJobs, result)
+				log.Printf("Job %s does not exist", result.JobName)
 			}
 		case <-timeout:
-			log.Printf("Timeout waiting for jobs to complete")
+			log.Printf("Timeout waiting for job checks to complete")
 			// Обрабатываем оставшиеся джобы как таймаут
-			for j := i; j < len(matchingJobs); j++ {
+			for j := i; j < len(matchingOrgs); j++ {
 				select {
 				case result := <-jobResults:
 					if result.Error != nil {
-						failedJobs = append(failedJobs, result)
+						missingJobs = append(missingJobs, result)
+					} else if result.Exists {
+						existingJobs = append(existingJobs, result)
 					} else {
-						successfulJobs = append(successfulJobs, result)
+						missingJobs = append(missingJobs, result)
 					}
 				default:
-					// Джоба не завершилась в срок
-					failedJobs = append(failedJobs, JobResult{
-						JobName: matchingJobs[j].Name,
+					// Проверка не завершилась в срок
+					missingJobs = append(missingJobs, JobResult{
+						JobName: fmt.Sprintf("%s/%s/PR-%d", matchingOrgs[j].Name, repo.Name, pr.Number),
 						Error:   fmt.Errorf("timeout"),
 					})
 				}
@@ -89,110 +94,100 @@ func (s *WebhookService) ProcessPullRequest(event models.PullRequestEvent) error
 
 done:
 	// Публикуем комментарий с результатами
-	return s.publishResults(pr, repo, successfulJobs, failedJobs)
+	return s.publishResults(pr, repo, existingJobs, missingJobs)
 }
 
-// JobResult представляет результат выполнения джобы
+// JobResult представляет результат проверки джобы
 type JobResult struct {
-	JobName   string
-	BuildURL  string
-	BuildID   int
-	Error     error
+	JobName  string
+	JobURL   string
+	Exists   bool
+	Error    error
 }
 
-// findMatchingJobs находит джобы, подходящие для репозитория и ветки
-func (s *WebhookService) findMatchingJobs(repoFullName, branch string) []config.JobConfig {
-	var matchingJobs []config.JobConfig
+// findMatchingOrganizations находит организации, отслеживающие репозиторий
+func (s *WebhookService) findMatchingOrganizations(repoName string) []config.OrganizationConfig {
+	var matchingOrgs []config.OrganizationConfig
 
-	for _, job := range s.config.Jobs {
-		if job.Repository == repoFullName && (job.Branch == branch || job.Branch == "*") {
-			matchingJobs = append(matchingJobs, job)
+	for _, org := range s.config.Organizations {
+		for _, repo := range org.Repositories {
+			if repo == repoName {
+				matchingOrgs = append(matchingOrgs, org)
+				break
+			}
 		}
 	}
 
-	return matchingJobs
+	return matchingOrgs
 }
 
-// runJobAsync запускает джобу асинхронно
-func (s *WebhookService) runJobAsync(job config.JobConfig, pr models.PullRequest, repo models.Repository, results chan<- JobResult) {
-	log.Printf("Starting job %s", job.Name)
+// checkJobAsync проверяет существование джобы асинхронно
+func (s *WebhookService) checkJobAsync(org config.OrganizationConfig, pr models.PullRequest, repo models.Repository, results chan<- JobResult) {
+	// Формируем имя джобы по шаблону
+	jobName := s.buildJobName(org.JobPattern, org.Name, repo.Name, pr.Number)
+	
+	log.Printf("Checking job %s", jobName)
 
-	// Подготавливаем параметры для джобы
-	parameters := make(map[string]string)
-	for key, value := range job.Parameters {
-		parameters[key] = value
-	}
-
-	// Добавляем специфичные для PR параметры
-	parameters["PR_NUMBER"] = fmt.Sprintf("%d", pr.Number)
-	parameters["PR_TITLE"] = pr.Title
-	parameters["PR_URL"] = pr.URL
-	parameters["PR_HEAD_SHA"] = pr.Head.SHA
-	parameters["PR_HEAD_REF"] = pr.Head.Ref
-	parameters["PR_BASE_REF"] = pr.Base.Ref
-
-	// Запускаем джобу
-	buildResp, err := s.jenkinsService.TriggerBuild(job.JenkinsJob, parameters)
+	// Проверяем существование джобы
+	exists, err := s.jenkinsService.CheckJobExists(jobName)
 	if err != nil {
 		results <- JobResult{
-			JobName: job.Name,
-			Error:   fmt.Errorf("failed to trigger build: %w", err),
+			JobName: jobName,
+			Error:   fmt.Errorf("failed to check job existence: %w", err),
 		}
 		return
 	}
 
-	log.Printf("Job %s triggered with queue ID %d", job.Name, buildResp.QueueID)
-
-	// Ждем завершения сборки
-	build, err := s.jenkinsService.WaitForBuildCompletion(job.JenkinsJob, buildResp.QueueID, s.config.Timeout)
-	if err != nil {
-		results <- JobResult{
-			JobName: job.Name,
-			Error:   fmt.Errorf("failed to wait for build completion: %w", err),
-		}
-		return
-	}
-
+	jobURL := s.jenkinsService.GetJobURL(jobName)
 	results <- JobResult{
-		JobName:  job.Name,
-		BuildURL: build.URL,
-		BuildID:  build.Number,
+		JobName: jobName,
+		JobURL:  jobURL,
+		Exists:  exists,
 	}
 }
 
-// publishResults публикует комментарий с результатами выполнения джоб
-func (s *WebhookService) publishResults(pr models.PullRequest, repo models.Repository, successfulJobs, failedJobs []JobResult) error {
+// buildJobName строит имя джобы по шаблону
+func (s *WebhookService) buildJobName(pattern, organization, repository string, prNumber int) string {
+	jobName := pattern
+	jobName = strings.ReplaceAll(jobName, "{organization}", organization)
+	jobName = strings.ReplaceAll(jobName, "{repository}", repository)
+	jobName = strings.ReplaceAll(jobName, "{pr_number}", fmt.Sprintf("%d", prNumber))
+	return jobName
+}
+
+// publishResults публикует комментарий с результатами проверки джоб
+func (s *WebhookService) publishResults(pr models.PullRequest, repo models.Repository, existingJobs, missingJobs []JobResult) error {
 	owner := repo.Owner.Login
 	repoName := repo.Name
 
 	var comment strings.Builder
-	comment.WriteString("## 🚀 Jenkins Jobs Status\n\n")
+	comment.WriteString("## 🔍 Jenkins Jobs Check\n\n")
 
-	if len(successfulJobs) > 0 {
-		comment.WriteString("### ✅ Successful Jobs\n")
-		for _, job := range successfulJobs {
-			comment.WriteString(fmt.Sprintf("- **%s**: [Build #%d](%s)\n", job.JobName, job.BuildID, job.BuildURL))
+	if len(existingJobs) > 0 {
+		comment.WriteString("### ✅ Existing Jobs\n")
+		for _, job := range existingJobs {
+			comment.WriteString(fmt.Sprintf("- **%s**: [View Job](%s)\n", job.JobName, job.JobURL))
 		}
 		comment.WriteString("\n")
 	}
 
-	if len(failedJobs) > 0 {
-		comment.WriteString("### ❌ Failed Jobs\n")
-		for _, job := range failedJobs {
+	if len(missingJobs) > 0 {
+		comment.WriteString("### ❌ Missing Jobs\n")
+		for _, job := range missingJobs {
 			if job.Error != nil {
 				comment.WriteString(fmt.Sprintf("- **%s**: %s\n", job.JobName, job.Error.Error()))
 			} else {
-				comment.WriteString(fmt.Sprintf("- **%s**: Unknown error\n", job.JobName))
+				comment.WriteString(fmt.Sprintf("- **%s**: Job not found\n", job.JobName))
 			}
 		}
 		comment.WriteString("\n")
 	}
 
-	if len(successfulJobs) == 0 && len(failedJobs) == 0 {
-		comment.WriteString("No jobs were triggered for this PR.\n")
+	if len(existingJobs) == 0 && len(missingJobs) == 0 {
+		comment.WriteString("No organizations are tracking this repository.\n")
 	}
 
-	comment.WriteString(fmt.Sprintf("*Processed at %s*", time.Now().Format("2006-01-02 15:04:05 UTC")))
+	comment.WriteString(fmt.Sprintf("*Checked at %s*", time.Now().Format("2006-01-02 15:04:05 UTC")))
 
 	return s.giteaService.CreateComment(owner, repoName, pr.Number, comment.String())
 }

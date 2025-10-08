@@ -1,14 +1,14 @@
 # Gitea-Jenkins Webhook Server
 
-Веб-сервер на Go для интеграции Gitea и Jenkins. Приложение получает webhook от Gitea о создании Pull Request, запускает соответствующие джобы в Jenkins и публикует комментарии с результатами.
+Веб-сервер на Go для интеграции Gitea и Jenkins. Приложение получает webhook от Gitea о создании Pull Request, проверяет существование соответствующих джоб в Jenkins и публикует комментарии с результатами проверки.
 
 ## Возможности
 
 - ✅ Обработка webhook от Gitea о создании Pull Request
-- ✅ Асинхронный запуск джоб в Jenkins
-- ✅ Публикация комментариев в Gitea с результатами
+- ✅ Проверка существования джоб в Jenkins по шаблону
+- ✅ Публикация комментариев в Gitea с результатами проверки
 - ✅ Обработка таймаутов
-- ✅ Конфигурируемые джобы через YAML
+- ✅ Конфигурируемые организации и шаблоны джоб через YAML
 - ✅ Docker контейнеризация
 - ✅ Параллельная обработка webhook
 
@@ -45,18 +45,34 @@ gitea:
   url: "http://gitea:3000"
   token: "your-gitea-token"
 
-timeout: "10m"
+# Организации Jenkins, которые отслеживают репозитории
+organizations:
+  - name: "redkitlab"
+    repositories:
+      - "scada"
+      - "monitoring"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "RedKitLab organization jobs"
+  
+  - name: "devops"
+    repositories:
+      - "infrastructure"
+      - "deployment"
+    job_pattern: "{organization}/{repository}/PR-{pr_number}"
+    description: "DevOps organization jobs"
 
-jobs:
-  - name: "build-frontend"
-    repository: "myorg/myproject"
-    branch: "main"
-    jenkins_job: "myproject-frontend-build"
-    parameters:
-      BRANCH_NAME: "main"
-      REPOSITORY_URL: "https://gitea.example.com/myorg/myproject.git"
-    description: "Frontend build job"
+# Таймаут для проверки существования джоб
+check_timeout: "30s"
 ```
+
+### Шаблоны джоб
+
+Приложение использует шаблоны для формирования имен джоб:
+- `{organization}` - имя организации
+- `{repository}` - имя репозитория
+- `{pr_number}` - номер Pull Request
+
+Например, для PR #453 в репозитории "scada" организации "redkitlab" будет проверяться джоба: `redkitlab/scada/PR-453`
 
 ## Запуск
 
